@@ -1,80 +1,93 @@
-// Shinobi Community hub rules — ADD-ON block.
+// Shinobi Community hub rules — ADD-ON block (security-hardened patch, Nov 22, 2026).
 // Paste these matches INTO your existing rules file (keep your game rules
 // exactly as they are, saves/{uid} and config/{uid} untouched), then publish.
 // OWNER_UID is the game owner account; moderators flag comes from profiles.
+// Hardening: no self-granted moderator/sanctions, author-only edits with
+// moderation fields locked to mods, authenticated-UID authorship on all
+// member-created content, constrained notifications, mod-managed moderation.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function isOwner() { return signedIn() && request.auth.uid == 'Gb2MYzFu5sV2Rr8d1cGWMI90K4e2'; }
+    function profileExists(uid) { return exists(/databases/$(database)/documents/community_profiles/$(uid)); }
     function isMod() {
-      return isOwner() ||
-        (signedIn() && get(/databases/$(database)/documents/community_profiles/$(request.auth.uid)).data.moderator == true);
+      return isOwner() || (signedIn() && profileExists(request.auth.uid) &&
+        get(/databases/$(database)/documents/community_profiles/$(request.auth.uid)).data.moderator == true);
     }
     function small() { return request.resource.size() < 20000; }
+    function isAuthor() { return signedIn() && resource.data.uid == request.auth.uid; }
+    function newAuthor() { return signedIn() && request.resource.data.uid == request.auth.uid; }
 
-    // Public reads for signed-in visitors, open create for members,
-    // author edits own, owner/mods edit anything, deletes owner-only.
+    // Bugs, feature requests and discussions: authenticated author can edit own
+    // posts; moderators can manage all. Deletes are moderator-only.
     match /community_bugs/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && small();
-      allow update: if signedIn() && small();
-      allow delete: if isOwner();
+      allow create: if newAuthor() && small();
+      allow update: if small() && (isMod() || (isAuthor() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status','devReply','hidden','pinned','uid','author','when'])));
+      allow delete: if isMod();
     }
     match /community_features/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && small();
-      allow update: if signedIn() && small();
-      allow delete: if isOwner();
+      allow create: if newAuthor() && small();
+      allow update: if small() && (isMod() || (isAuthor() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status','devReply','hidden','pinned','uid','author','when'])));
+      allow delete: if isMod();
     }
     match /community_discussions/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && small();
-      allow update: if signedIn() && small();
-      allow delete: if isOwner();
+      allow create: if newAuthor() && small();
+      allow update: if small() && (isMod() || (isAuthor() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status','devReply','hidden','pinned','uid','author','when'])));
+      allow delete: if isMod();
     }
+    // Comments: authors can edit their own comment; moderation is mod-only.
     match /community_comments/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && small();
-      allow update: if signedIn() && small();
-      allow delete: if isOwner();
+      allow create: if newAuthor() && small();
+      allow update: if small() && (isMod() || (isAuthor() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])));
+      allow delete: if isMod();
     }
     match /community_announcements/{id} {
       allow read: if signedIn();
-      allow create, update, delete: if isOwner();
+      allow create, update, delete: if isMod();
     }
+    // Activity entries are authored by the logged-in UID and immutable after creation.
     match /community_activity/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && small();
-      allow update, delete: if isOwner();
-    }
-    // Profiles: everyone reads, you write your own, owner edits anyone.
-    match /community_profiles/{uid} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.auth.uid == uid;
-      allow update: if signedIn() && (request.auth.uid == uid || isOwner());
-      allow delete: if isOwner();
-    }
-    // Notifications: only your own.
-    match /community_notifications/{id} {
-      allow read: if signedIn() && resource.data.to == request.auth.uid;
-      allow create: if signedIn() && request.resource.data.to == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.to == request.auth.uid;
-    }
-    // Reports: anyone files, owner/mods read and manage.
-    match /community_reports/{id} {
-      allow read: if isMod();
-      allow create: if signedIn() && small();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid && small();
       allow update, delete: if isMod();
     }
-    // Mod log: owner writes and reads.
+    // Profiles: users may edit normal profile fields, never self-grant moderator
+    // or alter moderation sanctions. Owner/mods can manage privileged fields.
+    match /community_profiles/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid &&
+        (!('moderator' in request.resource.data) || request.resource.data.moderator == false) &&
+        (!('mutedUntil' in request.resource.data)) && (!('warnings' in request.resource.data));
+      allow update: if isOwner() || (signedIn() && request.auth.uid == uid &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['moderator','mutedUntil','warnings']));
+      allow delete: if isOwner();
+    }
+    // Notifications: recipients can read, mark read, or clear their own.
+    match /community_notifications/{id} {
+      allow read: if signedIn() && resource.data.to == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.to is string && request.resource.data.to != request.auth.uid && small() && request.resource.data.keys().hasOnly(['to','type','text','ref','read','when']);
+      allow update: if signedIn() && resource.data.to == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if signedIn() && resource.data.to == request.auth.uid;
+    }
+    // Reports: members can submit reports; moderators handle them.
+    match /community_reports/{id} {
+      allow read: if isMod();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid && small();
+      allow update, delete: if isMod();
+    }
     match /community_modlog/{id} {
-      allow read, create, update, delete: if isOwner();
+      allow read, create, update, delete: if isMod();
     }
     match /community_chat/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && small();
-      allow update, delete: if isOwner();
+      allow create: if newAuthor() && small();
+      allow update, delete: if isMod();
     }
   }
 }
