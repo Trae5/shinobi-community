@@ -1,0 +1,90 @@
+/* ---------- detail modal, comments, reactions ---------- */
+var CURRENT=null,RP=null,pendingReply=null;
+function findDoc(ptype,id){var arr=ptype==='bug'?BUGS:ptype==='feature'?REQS:ptype==='discussion'?DISC:ptype==='announcement'?ANNS:COMS;
+ for(var i=0;i<arr.length;i++)if(arr[i].id===id)return arr[i];return null}
+function statusTrack(list,cur){return '<div class="status-track">'+list.map(function(s){return '<span class="'+(s[0]===cur?'hit':'')+'">'+s[1]+'</span>'}).join('')+'</div>'}
+function react(ptype,id,emoji){if(!UID){openName();return}var d=findDoc(ptype,id);if(!d)return;
+ var r=(d.reactions||{})[emoji]||{};var patch={};
+ if(r[UID]){patch['reactions.'+emoji+'.'+UID]=firebase.firestore.FieldValue.delete()}else{patch['reactions.'+emoji+'.'+UID]=true}
+ db.collection(ptype==='discussion'?'community_discussions':'community_announcements').doc(id).update(patch).catch(function(){toast('Could not react.')});
+ openDetail(ptype,id)}
+function rxRow(ptype,id,d){var r=d.reactions||{};var html='';
+ ['🔥','👍','💀','😂','❤️'].forEach(function(e){var n=Object.keys(r[e]||{}).length;var mine=r[e]&&r[e][UID];
+ html+='<button class="rx'+(mine?' mine':'')+'" data-react="'+ptype+'|'+id+'|'+e+'">'+e+(n?' '+n:'')+'</button>'});
+ return '<div class="reactions">'+html+'</div>'}
+function openDetail(ptype,id){var d=findDoc(ptype,id);if(!d)return;CURRENT={ptype:ptype,id:id};pendingReply=null;
+ var h='';
+ if(ptype==='bug'){var st=bugStatusOf(d);var cls=st==='new'?'new':st==='confirmed'?'confirmed':st==='investigating'?'investigating':st==='fixing'?'fixing':st==='fixed'?'fixed':'closed';
+  h+='<h3>Bug Report</h3><div class="top" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:16px;font-weight:700">'+esc(d.title)+'</div><div><span class="badge '+cls+'">'+esc(statusLabel(BUGSTATUSES,st))+'</span> <span class="badge meta">'+esc(gameName(d.game))+'</span>'+(d.category?' <span class="badge meta">'+esc(d.category)+'</span>':'')+(d.severity?' <span class="badge sev '+(d.severity==='high'?'':d.severity)+'">'+(d.severity==='high'?'Game-breaking':d.severity==='med'?'Moderate':'Minor')+'</span>':'')+'</div></div>'+statusTrack(BUGSTATUSES,st)+'<p style="color:var(--dim);font-size:13.5px;line-height:1.65;margin-top:10px;white-space:pre-wrap">'+esc(d.body)+'</p>'+(d.steps?'<p style="color:var(--dim);font-size:13px;line-height:1.6;margin-top:8px"><b style="color:var(--gold)">Steps:</b> '+esc(d.steps)+'</p>':'')}
+ else if(ptype==='feature'){var st2=reqStatusOf(d);var cls2={review:'review',considering:'considering',planned:'planned',dev:'dev',implemented:'implemented',declined:'declined'}[st2];
+  h+='<h3>Feature Request</h3><div class="top" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:16px;font-weight:700">'+esc(d.title)+'</div><div><span class="badge '+cls2+'">'+esc(statusLabel(REQSTATUSES,st2))+'</span> <span class="badge meta">'+esc(gameName(d.game))+'</span>'+(d.category?' <span class="badge meta">'+esc(d.category)+'</span>':'')+'</div></div>'+statusTrack(REQSTATUSES,st2)+'<p style="color:var(--dim);font-size:13.5px;line-height:1.65;margin-top:10px;white-space:pre-wrap">'+esc(d.body)+'</p>'}
+ else if(ptype==='discussion'){h+='<h3>Discussion</h3><div style="font-size:16px;font-weight:700">'+esc(d.title)+'</div><div style="margin-top:6px"><span class="badge meta">'+esc(gameName(d.game))+'</span> '+(d.tags||[]).map(function(t){return '<span class="badge meta">'+esc(t)+'</span>'}).join(' ')+'</div><p style="color:var(--dim);font-size:13.5px;line-height:1.65;margin-top:10px;white-space:pre-wrap">'+esc(d.body)+'</p>'+rxRow('discussion',id,d)}
+ else{h+='<h3>'+esc(d.type||'Announcement')+'</h3><div style="font-size:16px;font-weight:700">'+esc(d.title)+'</div><div style="margin-top:6px"><span class="badge meta">'+esc(d.type||'Announcement')+'</span> <span class="badge meta">'+esc(gameName(d.game))+'</span></div>'+(d.image?'<img src="'+esc(d.image)+'" alt="" style="width:100%;border-radius:9px;margin-top:12px;max-height:300px;object-fit:cover" onerror="this.style.display=\'none\'">':'')+'<p style="color:var(--dim);font-size:13.5px;line-height:1.65;margin-top:10px;white-space:pre-wrap">'+esc(d.body)+'</p>'+rxRow('announcement',id,d)}
+ if(ptype==='bug'&&d.devReply)h+='<div class="devreply"><b>Developer:</b> '+esc(d.devReply)+'</div>';
+ if(ptype==='feature'&&d.devReply)h+='<div class="devreply"><b>Developer:</b> '+esc(d.devReply)+'</div>';
+ var canReact=ptype==='discussion'||ptype==='announcement';
+ if(canReact)h+='<div style="display:flex;gap:4px;margin-top:8px">'+['🔥','👍','💀','😂','❤️'].map(function(e){return '<button class="rx" data-react="'+ptype+'|'+id+'|'+e+'" title="Add reaction">'+e+'+</button>'}).join('')+'</div>';
+ h+=commentsHTML(ptype,id);
+ if(isOwner())h+=ownerControls(ptype,d);
+ h+='<div class="mrow"><button class="btn ghost" onclick="closeModal(\'detailmodal\')">Close</button></div>';
+ document.getElementById('detailbox').innerHTML=h;openModal('detailmodal')}
+function ownerControls(ptype,d){var h='<div class="devreply" style="margin-top:14px;border-left-color:var(--red2)"><b>Owner tools</b><div style="margin-top:8px">';
+ if(ptype==='bug'||ptype==='feature'){var list=ptype==='bug'?BUGSTATUSES:REQSTATUSES;var cur=ptype==='bug'?bugStatusOf(d):reqStatusOf(d);
+  h+='<select id="adm-status">'+list.map(function(s){return '<option value="'+s[0]+'"'+(s[0]===cur?' selected':'')+'>'+s[1]+'</option>'}).join('')+'</select>';
+  h+='<textarea id="adm-devreply" placeholder="Official developer response (optional)" style="margin-top:8px">'+esc(d.devReply||'')+'</textarea>';
+  h+='<button class="btn mini" style="margin-top:8px" onclick="saveStatus(\''+ptype+'\',\''+d.id+'\')">Save status</button> '}
+ if(ptype==='discussion')h+='<button class="btn mini ghost" onclick="togglePin(\''+d.id+'\','+(d.pinned?'true':'false')+')">'+(d.pinned?'Unpin':'Pin')+'</button> ';
+ h+='<button class="btn mini danger" onclick="hideDoc(\''+ptype+'\',\''+d.id+'\',\''+(d.hidden?'false':'true')+'\')">'+(d.hidden?'Restore':'Remove')+'</button>';
+ h+='</div></div>';return h}
+function saveStatus(ptype,id){var d=findDoc(ptype,id);if(!d)return;var st=document.getElementById('adm-status').value;var dr=document.getElementById('adm-devreply').value.trim();
+ var patch={status:st,devReply:dr,updated:new Date().toISOString()};
+ var col=ptype==='bug'?'community_bugs':'community_features';
+ var wasStatus=ptype==='bug'?bugStatusOf(d):reqStatusOf(d);
+ db.collection(col).doc(id).update(patch).then(function(){
+  pushMod('set '+(ptype==='bug'?'bug':'feature')+' status',d.title,st+(dr?' · replied as developer':''));
+  pushActivity('status',d.game,'moved "'+d.title+'" to '+statusLabel(ptype==='bug'?BUGSTATUSES:REQSTATUSES,st),d.title);
+  if(d.uid&&d.uid!==UID)notify(d.uid,'status','Your '+(ptype==='bug'?'bug report':'feature request')+' "'+d.title+'" is now: '+statusLabel(ptype==='bug'?BUGSTATUSES:REQSTATUSES,st),{type:ptype,id:id});
+  if(ptype==='feature'&&st==='implemented'&&wasStatus!=='implemented'&&d.uid){db.collection('community_profiles').doc(d.uid).update({rep:firebase.firestore.FieldValue.increment(5)}).catch(function(){});notify(d.uid,'status','Your feature request "'+d.title+'" was implemented! +5 reputation.',{type:'feature',id:id})}
+  toast('Saved.');openDetail(ptype,id)}).catch(function(e){toast('Could not save. Check Firestore rules for owner writes.')})}
+function togglePin(id,pinned){db.collection('community_discussions').doc(id).update({pinned:!pinned}).then(function(){pushMod(pinned?'unpinned discussion':'pinned discussion','discussion '+id,'');toast(pinned?'Unpinned.':'Pinned.');openDetail('discussion',id)}).catch(function(){toast('Could not update.')})}
+function hideDoc(ptype,id,hide){var d=findDoc(ptype,id);var col=ptype==='bug'?'community_bugs':ptype==='feature'?'community_features':ptype==='discussion'?'community_discussions':ptype==='announcement'?'community_announcements':'community_comments';
+ db.collection(col).doc(id).update({hidden:hide==='true'}).then(function(){pushMod(hide==='true'?'removed '+(ptype==='comment'?'comment':ptype):'restored '+(ptype==='comment'?'comment':ptype),d&&d.title||id,'');if(hide==='true'&&d&&d.uid&&d.uid!==UID)notify(d.uid,'mod','Your post "'+(d&&d.title||'a post')+'" was removed by a moderator.');toast(hide==='true'?'Removed.':'Restored.');closeModal('detailmodal');renderAll()}).catch(function(){toast('Could not update. Check rules.')})}
+function commentsHTML(ptype,id){var cs=COMS.filter(function(c){return c.parent===id&&c.ptype===ptype&&!c.hidden}).sort(function(a,b){return a.when.localeCompare(b.when)});
+ var top=cs.filter(function(c){return !c.replyTo});
+ var h='<h3 class="sect">Comments ('+cs.length+')</h3>';
+ if(!cs.length)h+='<div class="empty">No comments yet. Start the thread.</div>';
+ top.forEach(function(c){h+=commentHTML(c,cs)});
+ h+='<div class="cbox"><input id="cmt-input" maxlength="500" placeholder="Write a comment..." onkeydown="if(event.key===\'Enter\')addComment()"><button class="btn mini" onclick="addComment()">Post</button></div>';
+ return h}
+function commentHTML(c,all){var replies=all.filter(function(r){return r.replyTo===c.id});var likes=c.likes||{};var n=Object.keys(likes).length;var mine=likes[UID];
+ var h='<div class="comment"><div class="cmeta">'+whoChip(c)+' · '+ago(c.when)+(n?' · ❤️ '+n:'')+' <span class="like'+(mine?' on':'')+'" data-like="'+c.id+'">'+(mine?'liked':'like')+'</span> <span class="replybtn" onclick="setReply(\''+c.id+'\')">reply</span></div><div class="ct">'+esc(c.text)+'</div>';
+ replies.forEach(function(r){h+=commentHTML(r,all)});
+ return h+'</div>'}
+function setReply(cid){pendingReply=cid;var i=document.getElementById('cmt-input');if(i){i.focus();i.placeholder='Replying to a comment...'}}
+document.addEventListener('click',function(e){var l=e.target.closest('[data-like]');if(l){var c=COMS.find(function(x){return x.id===l.dataset.like});if(!c)return;
+ var likes=c.likes||{};var patch={};
+ if(likes[UID])patch['likes.'+UID]=firebase.firestore.FieldValue.delete();else{patch['likes.'+UID]=true;if(c.uid&&c.uid!==UID)notify(c.uid,'reaction',profName(UID,name())+' liked your comment',{type:c.ptype,id:c.parent})}
+ db.collection('community_comments').doc(c.id).update(patch).catch(function(){});openDetail(c.ptype,c.parent)}});
+function addComment(){if(!CLOUD)return cloudFail();if(muted())return;if(!name()){openName();return}
+ var i=document.getElementById('cmt-input');var v=i.value.trim();if(!v)return;if(!guard('comment',15000))return;
+ var doc={ptype:CURRENT.ptype,parent:CURRENT.id,replyTo:pendingReply||null,text:v,author:name(),uid:UID,when:new Date().toISOString(),likes:{}};
+ db.collection('community_comments').add(doc).then(function(){
+  i.value='';pendingReply=null;i.placeholder='Write a comment...';
+  var col=CURRENT.ptype==='bug'?'community_bugs':CURRENT.ptype==='feature'?'community_features':CURRENT.ptype==='discussion'?'community_discussions':'community_announcements';
+  var target=findDoc(CURRENT.ptype,CURRENT.id);
+  db.collection(col).doc(CURRENT.id).update({commentsCount:firebase.firestore.FieldValue.increment(1)}).catch(function(){});
+  bumpCount('comments');gainRep(1);pushActivity('comment',target&&target.game,'commented on "'+(target&&target.title||'a post')+'"',target&&target.title);
+  if(target&&target.uid&&target.uid!==UID)notify(target.uid,'reply',profName(UID,name())+' commented on "'+target.title+'"',{type:CURRENT.ptype,id:CURRENT.id});
+  openDetail(CURRENT.ptype,CURRENT.id)}).catch(function(e){toast('Could not post the comment.')})}
+/* ---------- reports ---------- */
+function openReport(ptype,id){if(!name()){openName();return}RP={ptype:ptype,id:id};openModal('reportmodal')}
+document.getElementById('rp-send').onclick=function(){if(!RP||!CLOUD)return;var t=findDoc(RP.ptype,RP.id);
+ db.collection('community_reports').add({ptype:RP.ptype,pid:RP.id,reason:document.getElementById('rp-reason').value,detail:document.getElementById('rp-detail').value.trim(),snippet:t&&(t.title||t.text||'').slice(0,80),by:name(),uid:UID,when:new Date().toISOString(),status:'open'}).then(function(){closeModal('reportmodal');document.getElementById('rp-detail').value='';toast('Report sent. A moderator will look at it.')}).catch(function(e){toast('Could not send the report.')})};
+/* ---------- notifications ---------- */
+function openNotifs(){var h='';var list=NOTIFS.slice().sort(function(a,b){return b.when.localeCompare(a.when)});
+ h=list.length?list.map(function(n){return '<div class="feeditem" style="cursor:pointer;'+(n.read?'opacity:.6':'font-weight:600')+'" onclick="readNotif(\''+n.id+'\')"><div class="fi-ic">'+(n.type==='announcement'?'📣':n.type==='reply'?'↩️':n.type==='status'?'🔔':n.type==='vote'?'▲':'🔔')+'</div><div class="fi-tx">'+esc(n.text)+'<span class="when">'+ago(n.when)+'</span></div></div>'}).join(''):'<div class="empty">No notifications yet.</div>';
+ document.getElementById('notiflist').innerHTML=h;openModal('notifmodal')}
+function readNotif(id){var n=NOTIFS.find(function(x){return x.id===id});db.collection('community_notifications').doc(id).update({read:true}).catch(function(){});
+ closeModal('notifmodal');if(n&&n.ref&&n.ref.type&&n.ref.id)openDetail(n.ref.type,n.ref.id)}
+function markAllRead(){NOTIFS.filter(function(n){return !n.read}).forEach(function(n){db.collection('community_notifications').doc(n.id).update({read:true}).catch(function(){})});setTimeout(openNotifs,400)}
+function clearNotifs(){if(!NOTIFS.length||!confirm('Clear all notifications?'))return;NOTIFS.forEach(function(n){db.collection('community_notifications').doc(n.id).delete().catch(function(){})});setTimeout(function(){closeModal('notifmodal')},500)}

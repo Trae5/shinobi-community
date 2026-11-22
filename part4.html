@@ -1,0 +1,154 @@
+<script>
+var CFG={apiKey:'AIzaSyA6EnB41g34TnhhLNJcx8OA2vmTrShwoi4',authDomain:'shinobi-life-unbound.firebaseapp.com',projectId:'shinobi-life-unbound',storageBucket:'shinobi-life-unbound.firebasestorage.app',messagingSenderId:'231893959325',appId:'1:231893959325:web:4dc77151958863c51b0a74'};
+var OWNER='Gb2MYzFu5sV2Rr8d1cGWMI90K4e2';
+var app=firebase.initializeApp(CFG,'community'),auth=app.auth(),db=app.firestore();
+var UID=null,CLOUD=true,ME=null,READY=false;
+var BUGS=[],REQS=[],DISC=[],COMS=[],ANNS=[],ACT=[],NOTIFS=[],REPORTS=[],PROFILES=[];
+var bugFilter='all',bugStatus='all',bugSev='all',reqFilter='all',reqStatus='all',reqSort='votes',disFilter='all',disSort='new',annFilter='all',actFilter='all',searchType='all',searchGame='all',homeGame='all',adminTab='compose';
+var lastChat=0,lastPost=0,lastComment=0;
+var AVATARS=['🥷','🦊','🐺','🐍','🦅','🐅','🐉','🔥','⚡','🌊','🌙','🍃','🌀','🎴','🍡','⛅'];
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function ago(iso){var d=new Date(iso).getTime();if(!d)return'';var s=(Date.now()-d)/1000;if(s<60)return'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'}
+function gameName(g){return g==='legacy'?'Shinobi Legacy':g==='unbound'?'Life Unbound':'Both games'}
+function norm(s){return String(s||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim()}
+var BUGSTATUSES=[['new','New'],['confirmed','Confirmed'],['investigating','Investigating'],['fixing','Fix in progress'],['fixed','Fixed'],['closed','Closed']];
+var REQSTATUSES=[['review','Under review'],['considering','Considering'],['planned','Planned'],['dev','In development'],['implemented','Implemented'],['declined','Declined']];
+function bugStatusOf(b){return b.status==='open'?'new':(b.status||'new')}
+function reqStatusOf(r){return r.status||'review'}
+function statusLabel(list,s){for(var i=0;i<list.length;i++)if(list[i][0]===s)return list[i][1];return s}
+function toast(t){var e=document.getElementById('toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(function(){e.classList.remove('on')},2600)}
+function openModal(id){document.getElementById(id).classList.add('on')}
+function closeModal(id){document.getElementById(id).classList.remove('on')}
+function go(v){var b=document.querySelector('nav button[data-v="'+v+'"]');if(b)b.click()}
+function isOwner(){return UID===OWNER}
+function profOf(uid){for(var i=0;i<PROFILES.length;i++)if(PROFILES[i].uid===uid)return PROFILES[i];return null}
+function profName(uid,fallback){var p=profOf(uid);return(p&&p.name)||fallback||'anonymous'}
+function profAvatar(uid,fallback){var p=profOf(uid);return(p&&p.avatar)||'🥷'}
+function whoChip(doc){var uid=doc.uid;var nm=doc.author||'anonymous';if(!uid)return '<span class="who-name">'+esc(nm)+'</span>';
+ return '<span class="who-name" data-prof="'+esc(uid)+'">'+AVATAR_ICON(uid,nm)+' '+esc(nm)+'</span>'}
+function AVATAR_ICON(uid,nm){var p=profOf(uid);var a=(p&&p.avatar)||'🥷';return '<span style="font-size:13px">'+a+'</span>'}
+function cloudFail(){if(!CLOUD){return}CLOUD=false;document.getElementById('cloudwarn').style.display='block';var p=document.getElementById('hubstatus');if(p){p.textContent='offline · retrying';p.className='pill2 off'}}
+function guard(key,ms){var now=Date.now();var last={chat:lastChat,post:lastPost,comment:lastComment}[key]||0;if(now-last<ms){toast('Easy there, give it a moment.');return false}if(key==='chat')lastChat=now;else if(key==='post')lastPost=now;else lastComment=now;return true}
+function muted(){if(ME&&ME.mutedUntil&&new Date(ME.mutedUntil).getTime()>Date.now()){toast('You are muted until '+new Date(ME.mutedUntil).toLocaleString()+'.');return true}return false}
+function todayKey(){return new Date().toISOString().slice(0,10)}
+/* ---------- auth + boot ---------- */
+auth.onAuthStateChanged(function(u){if(u){UID=u.uid;boot()}else{auth.signInAnonymously().catch(function(){cloudFail()})}});
+function boot(){
+ if(READY)return;READY=true;
+ ensureProfile();
+ var subs=[
+  ['community_bugs',function(s){BUGS=s.docs.map(function(d){var v=d.data();v.id=d.id;return v});renderBugs();renderHome();renderTrending()}],
+  ['community_features',function(s){REQS=s.docs.map(function(d){var v=d.data();v.id=d.id;return v});renderReqs();renderHome();renderTrending()}],
+  ['community_discussions',function(s){DISC=s.docs.map(function(d){var v=d.data();v.id=d.id;return v});renderDiscussions();renderHome();renderTrending()}],
+  ['community_comments',function(s){COMS=s.docs.map(function(d){var v=d.data();v.id=d.id;return v});renderDiscussions();renderTrending()}],
+  ['community_announcements',function(s){ANNS=s.docs.map(function(d){var v=d.data();v.id=d.id;return v});renderAnns();renderHome();checkAnnNotifs()}],
+  ['community_activity',function(s){ACT=s.docs.map(function(d){var v=d.data();v.id=d.id;return v});renderActivity();renderHome();renderTrending()}],
+  ['community_profiles',function(s){PROFILES=s.docs.map(function(d){var v=d.data();v.uid=d.id;return v});renderMembers();renderHome();renderMe()}],
+  ['community_reports',function(s){REPORTS=s.docs.map(function(d){var v=d.data();v.id=d.id;return v});if(isOwner())renderAdmin()}]
+ ];
+ var COREC={community_bugs:1,community_features:1,community_chat:1};
+ subs.forEach(function(p){db.collection(p[0]).orderBy('when','desc').limit(300).onSnapshot(function(s){p[1](s)},function(e){if(p[0]==='community_reports'||p[0]==='community_modlog')return;if(!COREC[p[0]])return;cloudFail()})});
+ db.collection('community_notifications').where('to','==',UID).onSnapshot(function(s){NOTIFS=s.docs.map(function(d){var v=d.data();v.id=d.id;return v});updateBell()},function(e){});
+ db.collection('community_chat').orderBy('when','desc').limit(120).onSnapshot(function(s){var el=document.getElementById('chatlog');if(!el)return;var msgs=s.docs.map(function(d){return d.data()}).reverse();el.innerHTML=msgs.map(function(m){return '<div class="msg'+(m.uid===UID?' me':'')+'"><div class="nm">'+esc(m.name)+'</div><div class="tx">'+esc(m.text)+'</div><div class="tm">'+ago(m.when)+'</div></div>'}).join('');el.scrollTop=el.scrollHeight},function(e){cloudFail()});
+ if(!name())setTimeout(openName,600);
+ renderAll();
+}
+function name(){return localStorage.getItem('shinobi_com_name')||''}
+function ensureProfile(){
+ db.collection('community_profiles').doc(UID).get().then(function(d){
+  if(d.exists){ME=d.data();ME.id=d.id;applyName()}
+  else{var v=AVATARS[Math.floor(Math.random()*AVATARS.length)];
+   ME={name:'',avatar:v,bio:'',joined:new Date().toISOString(),rep:0,badges:[],counts:{},lastSeenAnn:0};
+   db.collection('community_profiles').doc(UID).set(ME).then(applyName).catch(function(e){})}
+ }).catch(function(e){})
+}
+function applyName(){document.getElementById('hello-name').textContent=ME.name||'shinobi';renderMe();if(!ME.name&&!name())openName()}
+function saveProfile(patch){return db.collection('community_profiles').doc(UID).set(patch,{merge:true}).then(function(){Object.keys(patch).forEach(function(k){ME[k]=patch[k]})}).catch(function(e){toast('Could not save. Try again.')})}
+function gainRep(n){if(!ME||n<=0)return;var d=ME.daily||{};var done=d.day===todayKey()?d.n:0;if(done>=20)return;var add=Math.min(n,20-done);
+ return db.collection('community_profiles').doc(UID).update({rep:firebase.firestore.FieldValue.increment(add),['daily.day']:todayKey(),['daily.n']:done+add}).then(function(){ME.rep=(ME.rep||0)+add}).catch(function(){})}
+function bumpCount(k,n){var patch={};patch['counts.'+k]=firebase.firestore.FieldValue.increment(n||1);return saveProfile(patch)}
+function notify(to,type,text,ref){if(!to||to===UID||!CLOUD)return;db.collection('community_notifications').add({to:to,type:type,text:text,ref:ref||null,read:false,when:new Date().toISOString()}).catch(function(){})}
+function pushActivity(kind,game,text,ref){if(!CLOUD)return;db.collection('community_activity').add({kind:kind,game:game,text:text,actor:ME&&ME.name||name()||'anonymous',uid:UID,when:new Date().toISOString(),ref:ref||null}).catch(function(){})}
+function pushMod(action,target,detail){if(!CLOUD)return;db.collection('community_modlog').add({action:action,target:target,detail:detail||'',by:'Developer',when:new Date().toISOString()}).catch(function(){})}
+function computeBadges(p){var c=(p&&p.counts)||{};var total=(c.bugs||0)+(c.features||0)+(c.discussions||0)+(c.comments||0)+(c.chats||0);
+ var joined=p&&p.joined?new Date(p.joined).getTime():0;var days=joined?(Date.now()-joined)/86400000:0;
+ return [
+  {id:'firstreport',icon:'🐛',label:'First Report',tip:'Filed your first bug report',got:(c.bugs||0)>=1},
+  {id:'firstsuggestion',icon:'💡',label:'First Suggestion',tip:'Posted your first feature request',got:(c.features||0)>=1},
+  {id:'early',icon:'🌅',label:'Early Supporter',tip:'Joined the hub in its first weeks',got:joined&&joined<=new Date('2026-12-06').getTime()},
+  {id:'bughunter',icon:'🕸️',label:'Bug Hunter',tip:'Reported 5 or more bugs',got:(c.bugs||0)>=5},
+  {id:'ideacreator',icon:'✨',label:'Idea Creator',tip:'Posted 5 or more feature requests',got:(c.features||0)>=5},
+  {id:'active',icon:'🌀',label:'Active Member',tip:'25 or more posts, comments and votes of activity',got:total>=25},
+  {id:'veteran',icon:'⛩️',label:'Veteran',tip:'100+ reputation or 90 days in the community',got:(p&&p.rep||0)>=100||days>=90},
+  {id:'developer',icon:'🛠️',label:'Developer',tip:'Built the games',got:isOwner()},
+  {id:'moderator',icon:'🛡️',label:'Community Moderator',tip:'Trusted with the mod tools',got:!!(p&&p.moderator)}
+ ]}
+function badgeRow(p){return computeBadges(p).filter(function(b){return b.got}).map(function(b){return '<span class="badge bdg" title="'+esc(b.tip)+'">'+b.icon+' '+esc(b.label)+'</span>'}).join(' ')}
+/* ---------- tabs ---------- */
+document.querySelectorAll('nav button[data-v]').forEach(function(b){b.onclick=function(){document.querySelectorAll('nav button[data-v]').forEach(function(x){x.classList.remove('on')});b.classList.add('on');document.querySelectorAll('.view').forEach(function(v){v.classList.remove('on')});document.getElementById('view-'+b.dataset.v).classList.add('on');window.scrollTo({top:0})}});
+function updateBell(){var un=NOTIFS.filter(function(n){return !n.read}).length;var b=document.getElementById('navbell');b.dataset.count=un>9?'9+':un;b.classList.toggle('has',un>0)}
+/* ---------- chips builders ---------- */
+function chipRow(elId,pairs,cur,fn){var t=document.getElementById(elId);if(!t)return;var g='';pairs.forEach(function(f){g+='<button class="'+(cur===f[0]?'on':'')+'" data-k="'+f[0]+'">'+f[1]+'</button>'});t.innerHTML=g;
+ t.querySelectorAll('[data-k]').forEach(function(b){b.onclick=function(){fn(b.dataset.k)}})}
+/* ---------- bugs ---------- */
+function renderBugs(){
+ chipRow('bugfilters',[['all','All'],['legacy','Legacy'],['unbound','Life Unbound']].concat('sep').concat([['new','New'],['confirmed','Confirmed'],['investigating','Investigating'],['fixing','Fixing'],['fixed','Fixed'],['closed','Closed']]).map(function(f){return f==='sep'?['|','|']:f}),bugFilter,function(k){bugFilter=k;renderBugs()});
+ var t=document.getElementById('bugfilters');
+ t.querySelectorAll('[data-k]').forEach(function(b){if(b.dataset.k==='|'){b.style.display='none';b.disabled=true;b.style.border='none';b.style.background='none';return}b.onclick=function(){var k=b.dataset.k;if(['all','legacy','unbound'].indexOf(k)>=0)bugFilter=k;else bugStatus=k;renderBugs()}});
+ var q=norm(document.getElementById('bugsearch').value);
+ var list=BUGS.filter(function(b){return !b.hidden&&(bugFilter==='all'||b.game===bugFilter)&&(bugStatus==='all'||bugStatusOf(b)===bugStatus)&&(!q||norm(b.title+' '+b.body).indexOf(q)>=0)});
+ document.getElementById('buglist').innerHTML=list.length?list.map(bugCard).join(''):'<div class="empty">No bug reports here yet.<br>Found something broken? Be the first to report it.</div>';
+}
+function bugCard(b){var st=bugStatusOf(b);var cls=st==='new'?'new':st==='confirmed'?'confirmed':st==='investigating'?'investigating':st==='fixing'?'fixing':st==='fixed'?'fixed':'closed';
+ return '<div class="card'+(st==='fixed'||st==='closed'?' fx':'')+(b.hidden?' hidden':'')+'"><div class="top"><h4 onclick="openDetail(\'bug\',\''+b.id+'\')">'+esc(b.title)+'</h4><div><span class="badge '+cls+'">'+esc(statusLabel(BUGSTATUSES,st))+'</span> <span class="badge meta">'+esc(gameName(b.game))+'</span> '+(b.severity?'<span class="badge sev '+(b.severity==='high'?'':b.severity)+'">'+(b.severity==='high'?'Game-breaking':b.severity==='med'?'Moderate':'Minor')+'</span>':'')+'</div></div><p>'+esc(b.body)+'</p>'+(b.steps?'<p><b style="color:var(--gold)">Steps:</b> '+esc(b.steps)+'</p>':'')+(b.devReply?'<div class="devreply"><b>Developer:</b> '+esc(b.devReply)+'</div>':'')+'<div class="foot"><span class="who">'+whoChip(b)+' · '+ago(b.when)+'</span><span style="display:flex;gap:6px;align-items:center"><span class="who">💬 '+(b.commentsCount||0)+'</span><button class="up" data-detail="bug:'+b.id+'">View</button><button class="up" data-report="bug:'+b.id+'" title="Report">⚑</button>'+(isOwner()?'<button class="up" data-admin="bug:'+b.id+'">Dev</button>':'')+'</span></div></div>'}
+function dupeCheck(){var q=norm(document.getElementById('bg-title').value);var el=document.getElementById('bg-dupewarn');if(!q||q.length<4){el.innerHTML='';return}
+ var hits=BUGS.filter(function(b){var t=norm(b.title);return t.indexOf(q)>=0||q.indexOf(t)>=0}).slice(0,3);
+ el.innerHTML=hits.length?'<div class="devreply" style="border-left-color:var(--red2);border-color:rgba(179,38,38,.4);background:rgba(179,38,38,.08)"><b>Similar reports already exist:</b><br>'+hits.map(function(h){return '• '+esc(h.title)}).join('<br>')+'<br><span style="color:var(--dim)">Check them before posting a duplicate.</span></div>':''}
+document.getElementById('bg-post').onclick=function(){
+ if(!CLOUD)return cloudFail();if(muted())return;
+ var t=document.getElementById('bg-title').value.trim(),b=document.getElementById('bg-body').value.trim();
+ if(!t||!b)return toast('Give it a title and a description.');
+ if(!guard('post',30000))return;
+ var dup=BUGS.find(function(x){return norm(x.title)===norm(t)&&!x.hidden});
+ if(dup&&!confirm('A bug with the same title already exists. Post anyway?'))return;
+ var doc={game:document.getElementById('bg-game').value,title:t,body:b,steps:document.getElementById('bg-steps').value.trim(),category:document.getElementById('bg-cat').value,severity:document.getElementById('bg-sev').value,status:'new',author:name(),uid:UID,when:new Date().toISOString()};
+ db.collection('community_bugs').add(doc).then(function(){closeModal('bugmodal');document.getElementById('bg-title').value='';document.getElementById('bg-body').value='';document.getElementById('bg-steps').value='';document.getElementById('bg-dupewarn').innerHTML='';bumpCount('bugs');gainRep(2);pushActivity('bug',doc.game,'reported a bug: '+t,doc.title);toast('Bug reported. Thank you.');go('bugs')}).catch(function(e){cloudFail();toast('Could not post right now.')})};
+/* ---------- feature requests ---------- */
+function renderReqs(){
+ chipRow('reqfilters',[['all','All'],['legacy','Legacy'],['unbound','Life Unbound'],['both','Both']].concat([['|','|'],['review','Under review'],['considering','Considering'],['planned','Planned'],['dev','In development'],['implemented','Implemented'],['declined','Declined']]),reqFilter,function(k){reqFilter=k;renderReqs()});
+ var t=document.getElementById('reqfilters');
+ t.querySelectorAll('[data-k]').forEach(function(b){if(b.dataset.k==='|'){b.style.display='none';b.disabled=true;b.style.border='none';b.style.background='none';return}b.onclick=function(){var k=b.dataset.k;if(['all','legacy','unbound','both'].indexOf(k)>=0)reqFilter=k;else reqStatus=k;renderReqs()}});
+ var q=norm(document.getElementById('reqsearch').value);
+ var list=REQS.filter(function(r){return !r.hidden&&(reqFilter==='all'||r.game===reqFilter)&&(reqStatus==='all'||reqStatusOf(r)===reqStatus)&&(!q||norm(r.title+' '+r.body).indexOf(q)>=0)});
+ if(reqSort==='votes')list=list.slice().sort(function(a,b){return((b.votes||0)-(b.dvotes||0))-((a.votes||0)-(a.dvotes||0))});
+ else if(reqSort==='new')list.sort(function(a,b){return b.when.localeCompare(a.when)});
+ else if(reqSort==='trending')list=list.slice().sort(function(a,b){return commentCount('feature',b.id)+((b.votes||0)*0.5)-commentCount('feature',a.id)-((a.votes||0)*0.5)});
+ else if(reqSort==='updated')list=list.slice().sort(function(a,b){return(b.updated||b.when).localeCompare(a.updated||a.when)});
+ document.getElementById('reqlist').innerHTML=list.length?list.map(reqCard).join(''):'<div class="empty">No feature requests here yet.<br>Got an idea? Post the first one.</div>'}
+function commentCount(ptype,id){var n=0;COMS.forEach(function(c){if(c.ptype===ptype&&c.parent===id)n++});return n}
+function reqCard(r){var st=reqStatusOf(r);var cls={review:'review',considering:'considering',planned:'planned',dev:'dev',implemented:'implemented',declined:'declined'}[st];
+ var up=r.voters&&r.voters[UID],down=r.dvoters&&r.dvoters[UID];var score=(r.votes||0)-(r.dvotes||0);
+ return '<div class="card fq'+(r.hidden?' hidden':'')+'"><div class="top"><h4 onclick="openDetail(\'feature\',\''+r.id+'\')">'+esc(r.title)+'</h4><div><span class="badge '+cls+'">'+esc(statusLabel(REQSTATUSES,st))+'</span> <span class="badge meta">'+esc(gameName(r.game))+'</span>'+(r.category?' <span class="badge meta">'+esc(r.category)+'</span>':'')+'</div></div><p>'+esc(r.body)+'</p>'+(r.devReply?'<div class="devreply"><b>Developer:</b> '+esc(r.devReply)+'</div>':'')+'<div class="foot"><span style="display:flex;gap:6px;align-items:center"><button class="up'+(up?' mine':'')+'" data-vote="'+r.id+':up">▲ '+score+(up?' · voted':'')+'</button><button class="up down'+(down?' mine':'')+'" data-vote="'+r.id+':down">▼</button></span><span class="who">'+whoChip(r)+' · '+ago(r.when)+' · 💬 '+commentCount('feature',r.id)+' <button class="up" data-detail="feature:'+r.id+'">View</button><button class="up" data-report="feature:'+r.id+'" title="Report">⚑</button>'+(isOwner()?'<button class="up" data-admin="feature:'+r.id+'">Dev</button>':'')+'</span></div></div>'}
+document.addEventListener('click',function(e){
+ var v=e.target.closest('[data-vote]');
+ if(v){if(!CLOUD)return cloudFail();if(!UID){openName();return}
+  var parts=v.dataset.vote.split(':');var id=parts[0],dir=parts[1];
+  var r=REQS.find(function(x){return x.id===id});if(!r)return;
+  var up=r.voters&&r.voters[UID],down=r.dvoters&&r.dvoters[UID];
+  var patch={};
+  if(dir==='up'){if(up){patch['voters.'+UID]=firebase.firestore.FieldValue.delete();patch.votes=firebase.firestore.FieldValue.increment(-1)}else{if(down){patch['dvoters.'+UID]=firebase.firestore.FieldValue.delete();patch.dvotes=firebase.firestore.FieldValue.increment(-1)}patch['voters.'+UID]=true;patch.votes=firebase.firestore.FieldValue.increment(1);if(!up&&r.uid&&r.uid!==UID)notify(r.uid,'vote','Someone upvoted your feature request: '+r.title,{type:'feature',id:id})}}
+  else{if(down){patch['dvoters.'+UID]=firebase.firestore.FieldValue.delete();patch.dvotes=firebase.firestore.FieldValue.increment(-1)}else{if(up){patch['voters.'+UID]=firebase.firestore.FieldValue.delete();patch.votes=firebase.firestore.FieldValue.increment(-1)}patch['dvoters.'+UID]=true;patch.dvotes=firebase.firestore.FieldValue.increment(1)}}
+  db.collection('community_features').doc(id).update(patch).catch(function(){toast('Vote did not go through.')});return}
+ var d=e.target.closest('[data-detail]');if(d){var p=d.dataset.detail.split(':');openDetail(p[0],p[1]);return}
+ var rp=e.target.closest('[data-report]');if(rp){var pp=rp.dataset.report.split(':');openReport(pp[0],pp[1]);return}
+ var pr=e.target.closest('[data-prof]');if(pr){openProfile(pr.dataset.prof);return}
+ var rx=e.target.closest('[data-react]');if(rx){var pr2=rx.dataset.react.split('|');react(pr2[0],pr2[1],pr2[2]);return}
+});
+document.getElementById('rq-post').onclick=function(){
+ if(!CLOUD)return cloudFail();if(muted())return;
+ var t=document.getElementById('rq-title').value.trim(),b=document.getElementById('rq-body').value.trim();
+ if(!t||!b)return toast('Give it a title and a description.');
+ if(!guard('post',30000))return;
+ var voters={};if(UID)voters[UID]=true;
+ var doc={game:document.getElementById('rq-game').value,title:t,body:b,category:document.getElementById('rq-cat').value,status:'review',votes:1,voters:voters,dvotes:0,author:name(),uid:UID,when:new Date().toISOString()};
+ db.collection('community_features').add(doc).then(function(){closeModal('reqmodal');document.getElementById('rq-title').value='';document.getElementById('rq-body').value='';bumpCount('features');gainRep(2);pushActivity('feature',doc.game,'requested a feature: '+t,doc.title);toast('Request posted.');go('requests')}).catch(function(e){cloudFail();toast('Could not post right now.')})};
