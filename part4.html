@@ -26,7 +26,8 @@ function profName(uid,fallback){var p=profOf(uid);return(p&&p.name)||fallback||'
 function profAvatar(uid,fallback){var p=profOf(uid);return(p&&p.avatar)||'🥷'}
 function whoChip(doc){var uid=doc.uid;var nm=doc.author||'anonymous';if(!uid)return '<span class="who-name">'+esc(nm)+'</span>';
  return '<span class="who-name" data-prof="'+esc(uid)+'">'+AVATAR_ICON(uid,nm)+' '+esc(nm)+'</span>'}
-function AVATAR_ICON(uid,nm){var p=profOf(uid);var a=(p&&p.avatar)||'🥷';return '<span style="font-size:13px">'+a+'</span>'}
+function AVATAR_ICON(uid,nm){var p=profOf(uid);var a=(p&&p.avatar)||'🥷';if(a&&(a.slice(0,5)==='data:'||a.slice(0,8)==='avatars/'))return '<img src="'+a+'" alt="" style="width:15px;height:15px;border-radius:50%;object-fit:cover;vertical-align:-2px">';return '<span style="font-size:13px">'+a+'</span>'}
+function avInner(a){if(a&&(a.slice(0,5)==='data:'||a.slice(0,8)==='avatars/'))return '<img src="'+a+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block">';return esc(a||'🥷')}
 function cloudFail(){if(!CLOUD){return}CLOUD=false;document.getElementById('cloudwarn').style.display='block';var p=document.getElementById('hubstatus');if(p){p.textContent='offline · retrying';p.className='pill2 off'}}
 function guard(key,ms){var now=Date.now();var last={chat:lastChat,post:lastPost,comment:lastComment}[key]||0;if(now-last<ms){toast('Easy there, give it a moment.');return false}if(key==='chat')lastChat=now;else if(key==='post')lastPost=now;else lastComment=now;return true}
 function muted(){if(ME&&ME.mutedUntil&&new Date(ME.mutedUntil).getTime()>Date.now()){toast('You are muted until '+new Date(ME.mutedUntil).toLocaleString()+'.');return true}return false}

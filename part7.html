@@ -1,0 +1,80 @@
+/* ---------- home dashboard ---------- */
+function renderHome(){
+ var el=document.getElementById('hello-name');if(el&&ME)el.textContent=ME.name||'shinobi';
+ var c={};BUGS.forEach(function(b){var s=bugStatusOf(b);c[s]=(c[s]||0)+1});
+ var impl=REQS.filter(function(r){return reqStatusOf(r)==='implemented'}).length;
+ var voters=0;REQS.forEach(function(r){voters+=(r.votes||0)});
+ var act7={};var cutoff=Date.now()-7*86400000;ACT.forEach(function(a){if(new Date(a.when).getTime()>cutoff)act7[a.uid]=1});
+ var stats=[['Members',PROFILES.filter(function(p){return p.name}).length],['Discussions',DISC.length],['Requests',REQS.length],['Bugs',BUGS.length],['Fixed Bugs',c.fixed||0],['Shipped Features',impl],['Votes Cast',voters],['Active This Week',Object.keys(act7).length]];
+ document.getElementById('statrow').innerHTML=stats.map(function(s){return '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>'}).join('');
+ chipRow('homegamefilter',[['all','All games'],['legacy','Shinobi Legacy'],['unbound','Life Unbound']],homeGame,function(k){homeGame=k;renderHome()});
+ var ann=ANNS.find(function(a){return !a.hidden&&(Date.now()-new Date(a.when).getTime())<14*86400000});
+ var ab=document.getElementById('annbanner');
+ ab.style.display=ann?'block':'none';if(ann)ab.textContent='📣 '+ann.title+' — tap to read the news';
+ function filtGame(arr){return arr.filter(function(x){return !x.hidden&&(homeGame==='all'||x.game===homeGame||x.game==='both')})}
+ var dis=filtGame(DISC).slice(0,3);document.getElementById('home-disc').innerHTML=dis.length?dis.map(disCard).join(''):'<div class="empty">No discussions yet. Start the first.</div>';
+ var rq=filtGame(REQS).slice().sort(function(a,b){return((b.votes||0)-(b.dvotes||0))-((a.votes||0)-(a.dvotes||0))}).slice(0,3);
+ document.getElementById('home-reqs').innerHTML=rq.length?rq.map(reqCard).join(''):'<div class="empty">No requests yet. Post the first.</div>';
+ var bg=filtGame(BUGS).filter(function(b){return bugStatusOf(b)!=='fixed'&&bugStatusOf(b)!=='closed'}).slice(0,3);
+ document.getElementById('home-bugs').innerHTML=bg.length?bg.map(bugCard).join(''):'<div class="empty">No open bugs. Nice.</div>';
+ var fx=filtGame(BUGS).filter(function(b){return bugStatusOf(b)==='fixed'||bugStatusOf(b)==='closed'}).slice(0,3);
+ document.getElementById('home-fixed').innerHTML=fx.length?fx.map(bugCard).join(''):'<div class="empty">Nothing fixed yet.</div>';
+ var mb=PROFILES.filter(function(p){return p.name}).sort(function(a,b){return(b.rep||0)-(a.rep||0)}).slice(0,5);
+ document.getElementById('home-members').innerHTML=mb.length?mb.map(function(p,i){return '<div class="lbrow"><span class="rank">'+(i<3?['🥇','🥈','🥉'][i]:(i+1))+'</span><span class="avatar">'+avInner(p.avatar)+'</span><span class="who-name" data-prof="'+esc(p.uid)+'">'+esc(p.name)+'</span><span class="lbstat">'+(p.rep||0)+' rep</span></div>'}).join(''):'<div class="empty">No members yet.</div>';
+ var ac=ACT.filter(function(a){return homeGame==='all'||a.game===homeGame}).slice(0,7);
+ document.getElementById('home-activity').innerHTML=ac.length?ac.map(function(a){return '<div class="feeditem"><div class="fi-ic">'+(ACTICONS[a.kind]||'•')+'</div><div class="fi-tx"><b>'+esc(a.actor||'someone')+'</b> '+esc(a.text)+'<span class="when">'+ago(a.when)+'</span></div></div>'}).join(''):'<div class="empty">Quiet so far.</div>'}
+/* ---------- chat ---------- */
+document.getElementById('chatsend').onclick=sendChat;
+document.getElementById('chatin').addEventListener('keydown',function(e){if(e.key==='Enter')sendChat()});
+function sendChat(){
+ if(!CLOUD)return cloudFail();if(muted())return;
+ if(!name()){openName();return}
+ var v=document.getElementById('chatin').value.trim();if(!v)return;
+ if(!guard('chat',2000))return;
+ document.getElementById('chatin').value='';
+ db.collection('community_chat').add({uid:UID,name:name(),text:v,when:new Date().toISOString()}).then(function(){bumpCount('chats')}).catch(function(){cloudFail()})}
+/* ---------- admin ---------- */
+var MODLOG=[];
+db.collection('community_modlog').orderBy('when','desc').limit(120).onSnapshot(function(s){MODLOG=s.docs.map(function(d){var v=d.data();v.id=d.id;return v});if(isOwner())renderAdmin()},function(e){});
+function ownerUI(){document.getElementById('navadmin').style.display=isOwner()?'':'none'}
+document.querySelectorAll('#admintabs button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#admintabs button').forEach(function(x){x.classList.remove('on')});b.classList.add('on');adminTab=b.dataset.t;renderAdmin()}});
+function renderAdmin(){
+ ownerUI();if(!isOwner()){document.getElementById('adminbody').innerHTML='<div class="empty">Owner access only.</div>';return}
+ var el=document.getElementById('adminbody');
+ if(adminTab==='compose'){el.innerHTML='<button class="btn" onclick="openModal(\'annmodal\')">Post New Announcement</button><h3 class="sect">Published</h3>'+(ANNS.length?ANNS.map(function(a){return '<div class="card ann"><div class="top"><h4>'+esc(a.title)+'</h4><div><span class="badge meta">'+esc(a.type||'Announcement')+'</span> <span class="badge meta">'+esc(gameName(a.game))+'</span></div></div><div class="foot"><span class="who">'+ago(a.when)+'</span><button class="up" onclick="hideDoc(\'announcement\',\''+a.id+'\',\'true\')">Remove</button></div></div>'}).join(''):'<div class="empty">Nothing published yet.</div>');
+  document.getElementById('newann').style.display='';return}
+ if(adminTab==='features'){el.innerHTML='<h3 class="sect">Feature requests — set status and reply as the developer</h3>'+(REQS.length?REQS.map(function(r){var st=reqStatusOf(r);
+  return '<div class="card fq"><div class="top"><h4>'+esc(r.title)+'</h4><div><span class="badge meta">'+esc(gameName(r.game))+'</span> <span class="who">'+esc(r.author||'anonymous')+'</span></div></div><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><select id="fs-'+r.id+'">'+REQSTATUSES.map(function(s){return '<option value="'+s[0]+'"'+(s[0]===st?' selected':'')+'>'+s[1]+'</option>'}).join('')+'</select><input id="fr-'+r.id+'" placeholder="Developer response (optional)" value="'+esc(r.devReply||'')+'" style="flex:1;min-width:200px;background:#0f0a0c;border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:8px 10px;font-size:13px"><button class="btn mini" onclick="saveStatus(\'feature\',\''+r.id+'\')">Save</button></div></div>'}).join(''):'<div class="empty">No requests yet.</div>');return}
+ if(adminTab==='bugs'){el.innerHTML='<h3 class="sect">Bug reports — set status and reply as the developer</h3>'+(BUGS.length?BUGS.map(function(b){var st=bugStatusOf(b);
+  return '<div class="card"><div class="top"><h4>'+esc(b.title)+'</h4><div><span class="badge meta">'+esc(gameName(b.game))+'</span> <span class="who">'+esc(b.author||'anonymous')+'</span></div></div><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><select id="fs-'+b.id+'">'+BUGSTATUSES.map(function(s){return '<option value="'+s[0]+'"'+(s[0]===st?' selected':'')+'>'+s[1]+'</option>'}).join('')+'</select><input id="fr-'+b.id+'" placeholder="Developer response (optional)" value="'+esc(b.devReply||'')+'" style="flex:1;min-width:200px;background:#0f0a0c;border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:8px 10px;font-size:13px"><button class="btn mini" onclick="saveStatus(\'bug\',\''+b.id+'\')">Save</button></div></div>'}).join(''):'<div class="empty">No bugs yet.</div>');return}
+ if(adminTab==='moderation'){var open=REPORTS.filter(function(r){return r.status==='open'});var hid=[];
+  function scan(arr,ptype){arr.forEach(function(x){if(x.hidden)hid.push({d:x,ptype:ptype})})}
+  scan(BUGS,'bug');scan(REQS,'feature');scan(DISC,'discussion');scan(ANNS,'announcement');scan(COMS,'comment');
+  el.innerHTML='<h3 class="sect">Open reports ('+open.length+')</h3>'+(open.length?open.map(function(r){return '<div class="card"><div class="top"><h4>'+esc(r.reason)+' — '+esc(r.snippet||'')+'</h4><div><span class="badge meta">'+esc(r.ptype)+'</span></div></div>'+(r.detail?'<p>'+esc(r.detail)+'</p>':'')+'<div class="foot"><span class="who">reported by '+esc(r.by||'anonymous')+' · '+ago(r.when)+'</span><span style="display:flex;gap:6px"><button class="up" onclick="resolveReport(\''+r.id+'\')">Dismiss</button><button class="up danger" onclick="removeReported(\''+r.id+'\')">Remove Content</button></span></div></div>'}).join(''):'<div class="empty">No open reports.</div>')
+  +'<h3 class="sect">Removed content ('+hid.length+')</h3>'+(hid.length?hid.map(function(x){return '<div class="card hidden"><div class="top"><h4>'+esc(x.d.title||x.d.text||'(comment)')+'</h4><div><span class="badge meta">'+esc(x.ptype)+'</span></div></div><div class="foot"><span class="who">'+esc(x.d.author||'anonymous')+'</span><button class="up" onclick="hideDoc(\''+x.ptype+'\',\''+x.d.id+'\',\'false\')">Restore</button></div></div>'}).join(''):'<div class="empty">Nothing removed.</div>');return}
+ if(adminTab==='users'){el.innerHTML='<h3 class="sect">Members</h3>'+(PROFILES.length?PROFILES.map(function(p){return '<div class="lbrow"><span class="avatar">'+avInner(p.avatar)+'</span><span class="who-name" onclick="openProfile(\''+p.uid+'\')">'+esc(p.name||'(no name)')+'</span><span class="lbstat">'+(p.rep||0)+' rep · '+totalPosts(p)+' posts'+(p.mutedUntil&&new Date(p.mutedUntil)>new Date()?' · MUTED':'')+'</span><span style="display:flex;gap:6px;margin-left:10px;flex-wrap:wrap"><button class="up" onclick="adminUser(\''+p.uid+'\',\'warn\')">Warn</button><button class="up" onclick="adminUser(\''+p.uid+'\',\'mute\')">Mute 24h</button><button class="up" onclick="adminUser(\''+p.uid+'\',\'mod\')">'+(p.moderator?'Unmod':'Mod')+'</button></span></div>'}).join(''):'<div class="empty">No profiles yet.</div>');return}
+ if(adminTab==='log'){el.innerHTML='<h3 class="sect">Action log</h3>'+(MODLOG.length?MODLOG.map(function(m){return '<div class="feeditem"><div class="fi-ic">🛠️</div><div class="fi-tx"><b>'+esc(m.action)+'</b> — '+esc(m.target)+(m.detail?' · '+esc(m.detail):'')+'<span class="when">'+ago(m.when)+'</span></div></div>'}).join(''):'<div class="empty">No actions logged yet.</div>');return}
+ if(adminTab==='stats'){el.innerHTML='<h3 class="sect">Live statistics</h3><div class="statrow">'+[['Members',PROFILES.filter(function(p){return p.name}).length],['Bugs',BUGS.length],['Open bugs',BUGS.filter(function(b){return['new','confirmed','investigating','fixing'].indexOf(bugStatusOf(b))>=0}).length],['Fixed bugs',BUGS.filter(function(b){return bugStatusOf(b)==='fixed'}).length],['Requests',REQS.length],['Implemented',REQS.filter(function(r){return reqStatusOf(r)==='implemented'}).length],['Discussions',DISC.length],['Comments',COMS.length],['Chat messages','live'],['Total votes',REQS.reduce(function(n,r){return n+(r.votes||0)},0)]].map(function(s){return '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>'}).join('')+'</div>';return}}
+function resolveReport(id){db.collection('community_reports').doc(id).update({status:'resolved'}).then(function(){pushMod('dismissed report','report '+id,'');toast('Report dismissed.')}).catch(function(){toast('Could not update.')})}
+function removeReported(id){var r=REPORTS.find(function(x){return x.id===id});if(!r)return;
+ hideDoc(r.ptype,r.pid,'true');db.collection('community_reports').doc(id).update({status:'resolved'}).catch(function(){})}
+function adminUser(uid,action){var p=profOf(uid);var nm=p&&p.name||'this member';
+ if(action==='warn'){if(!confirm('Send a warning to '+nm+'?'))return;
+  db.collection('community_profiles').doc(uid).update({warnings:firebase.firestore.FieldValue.arrayUnion({when:new Date().toISOString(),by:'Developer'})}).then(function(){notify(uid,'mod','You received a warning from the moderators. Please review the community rules.');pushMod('warned user',nm,'')}).catch(function(){toast('Could not warn. Check rules.')})}
+ else if(action==='mute'){if(!confirm('Mute '+nm+' for 24 hours?'))return;
+  db.collection('community_profiles').doc(uid).update({mutedUntil:new Date(Date.now()+86400000).toISOString()}).then(function(){notify(uid,'mod','You are muted for 24 hours.');pushMod('muted user 24h',nm,'');toast('Muted.')}).catch(function(){toast('Could not mute. Check rules.')})}
+ else if(action==='mod'){var cur=p&&p.moderator;db.collection('community_profiles').doc(uid).update({moderator:!cur}).then(function(){pushMod(cur?'removed moderator':'granted moderator',nm,'');toast(cur?'Moderator removed.':'Moderator granted.')}).catch(function(){toast('Could not update. Check rules.')})}}
+/* ---------- announcements composer ---------- */
+document.getElementById('an-post').onclick=function(){
+ if(!CLOUD)return cloudFail();if(!isOwner())return;
+ var t=document.getElementById('an-title').value.trim(),b=document.getElementById('an-body').value.trim();
+ if(!t||!b)return toast('Give it a title and a body.');
+ var doc={type:document.getElementById('an-type').value,game:document.getElementById('an-game').value,title:t,body:b,image:document.getElementById('an-img').value.trim(),author:'Developer',uid:UID,when:new Date().toISOString()};
+ db.collection('community_announcements').add(doc).then(function(){closeModal('annmodal');document.getElementById('an-title').value='';document.getElementById('an-body').value='';document.getElementById('an-img').value='';pushActivity('announcement',doc.game,'posted an announcement: '+t,doc.title);pushMod('posted announcement',t,'');toast('Announcement published.')}).catch(function(e){toast('Could not publish. Check rules.')})};
+/* ---------- announcements type filter chips ---------- */
+/* ---------- render all + init ---------- */
+function renderAll(){ownerUI();var hp=document.getElementById('hubstatus');if(hp&&CLOUD){hp.textContent='online · v2.0.1';hp.className='pill2 on'}renderHome();renderActivity();renderDiscussions();renderBugs();renderReqs();renderAnns();renderTrending();renderMembers();renderMe();renderSearch()}
+window.openNotifs=openNotifs;window.openModal=openModal;window.closeModal=closeModal;window.go=go;window.openNewDiscussion=openNewDiscussion;window.openDetail=openDetail;window.openProfile=openProfile;window.openEditProfile=openEditProfile;window.addComment=addComment;window.setReply=setReply;window.react=react;window.saveStatus=saveStatus;window.togglePin=togglePin;window.hideDoc=hideDoc;window.resolveReport=resolveReport;window.removeReported=removeReported;window.adminUser=adminUser;window.dupeCheck=dupeCheck;window.renderBugs=renderBugs;window.renderReqs=renderReqs;window.renderDiscussions=renderDiscussions;window.renderMembers=renderMembers;window.renderSearch=renderSearch;window.markAllRead=markAllRead;window.clearNotifs=clearNotifs;
+</script>
+</body>
+</html>

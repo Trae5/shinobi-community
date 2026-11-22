@@ -1,0 +1,148 @@
+<body>
+<div class="wrap">
+<header>
+<h1>Shinobi Community</h1>
+<div class="pill2" id="hubstatus">connecting…</div>
+<div class="sub">the hub for Shinobi Legacy &amp; Shinobi: Life Unbound — bugs · features · discussions · announcements</div>
+</header>
+<nav><div class="navrow" id="navrow">
+<button data-v="home" class="on">Home</button>
+<button data-v="activity">Activity</button>
+<button data-v="discussions">Discussions</button>
+<button data-v="bugs">Bugs</button>
+<button data-v="requests">Features</button>
+<button data-v="announcements">News</button>
+<button data-v="chat">Chat</button>
+<button data-v="trending">Trending</button>
+<button data-v="members">Members</button>
+<button data-v="search">Search</button>
+<button data-v="me">My Profile</button>
+<button class="bellbtn" id="navbell" data-count="0" onclick="openNotifs()">🔔</button>
+<button data-v="admin" id="navadmin" style="display:none">Admin</button>
+</div></nav>
+<div class="banner" id="cloudwarn">Cloud is unreachable right now, so posting is offline. Try again in a bit.</div>
+
+<section class="view on" id="view-home">
+<div class="hero">
+<div class="hello">Welcome back, <b id="hello-name">shinobi</b>.</div>
+<p>Report what breaks, push the ideas you want built, argue about tier lists in the discussions, and catch every patch note as it drops. Everything here lands on the developer's desk.</p>
+<div class="quick">
+<button class="btn danger" onclick="openModal('bugmodal')">Report a Bug</button>
+<button class="btn" onclick="openModal('reqmodal')">Suggest a Feature</button>
+<button class="btn ghost" onclick="openNewDiscussion()">Start a Discussion</button>
+</div>
+</div>
+<div class="statrow" id="statrow"></div>
+<div class="banner ann" id="annbanner" onclick="go('announcements')"></div>
+<div class="filters" id="homegamefilter"></div>
+<div class="grid2">
+<div><h3 class="sect">Latest Discussions</h3><div id="home-disc"></div></div>
+<div><h3 class="sect">Trending Requests</h3><div id="home-reqs"></div></div>
+<div><h3 class="sect">Recently Reported Bugs</h3><div id="home-bugs"></div></div>
+<div><h3 class="sect">Recently Fixed</h3><div id="home-fixed"></div></div>
+<div><h3 class="sect">Most Active Members</h3><div id="home-members"></div></div>
+<div><h3 class="sect">Community Pulse</h3><div id="home-activity"></div></div>
+</div>
+</section>
+
+<section class="view" id="view-activity">
+<h2>Activity</h2>
+<p class="lead">Everything happening across the community, newest first.</p>
+<div class="filters" id="actfilters"></div>
+<div class="panel" id="activityfeed"></div>
+</section>
+
+<section class="view" id="view-discussions">
+<h2>Discussions</h2>
+<p class="lead">Talk builds, lore, balance, whatever. Keep it cool, tag your posts.</p>
+<button class="btn" onclick="openNewDiscussion()">Start a Discussion</button>
+<div class="searchbox"><input id="dissearch" placeholder="Search discussions..." oninput="renderDiscussions()"></div>
+<div class="filters" id="disfilters"></div>
+<div id="dislist"></div>
+</section>
+
+<section class="view" id="view-bugs">
+<h2>Bug Reports</h2>
+<p class="lead">Found something broken? Search first so nobody posts the same bug twice, then report it. Open bugs stay up until they are fixed in a live update.</p>
+<button class="btn danger" onclick="openModal('bugmodal')">Report a Bug</button>
+<div class="searchbox"><input id="bugsearch" placeholder="Search existing bug reports..." oninput="renderBugs()"></div>
+<div class="filters" id="bugfilters"></div>
+<div id="buglist"></div>
+</section>
+
+<section class="view" id="view-requests">
+<h2>Feature Requests</h2>
+<p class="lead">Want something added? Post it, vote on the ones you want most. The highest votes get looked at first.</p>
+<button class="btn" onclick="openModal('reqmodal')">Request a Feature</button>
+<div class="searchbox"><input id="reqsearch" placeholder="Search feature requests..." oninput="renderReqs()"></div>
+<div class="filters" id="reqfilters"></div>
+<div id="reqlist"></div>
+</section>
+
+<section class="view" id="view-announcements">
+<h2>News &amp; Patch Notes</h2>
+<p class="lead">Official updates, patch notes, sneak peeks and maintenance notices, straight from the developer.</p>
+<button class="btn" id="newann" style="display:none" onclick="openModal('annmodal')">Post Announcement</button>
+<div class="filters" id="annfilters"></div>
+<div id="annlist"></div>
+</section>
+
+<section class="view" id="view-chat">
+<h2>Live Chat</h2>
+<p class="lead">One room for the whole community. Be cool.</p>
+<div class="chatwrap">
+<div class="chatlog" id="chatlog"></div>
+<div class="chatbar"><input id="chatin" maxlength="300" placeholder="Say something..." autocomplete="off"><button id="chatsend">Send</button></div>
+</div>
+</section>
+
+<section class="view" id="view-trending">
+<h2>Trending &amp; Leaderboard</h2>
+<p class="lead">What the community is pushing for right now, and the players making it happen.</p>
+<div class="grid2">
+<div><h3 class="sect">Most Wanted Features</h3><div id="tr-reqs"></div></div>
+<div><h3 class="sect">Most Discussed</h3><div id="tr-dis"></div></div>
+<div><h3 class="sect">Hot Bug Reports</h3><div id="tr-bugs"></div></div>
+<div><h3 class="sect">Top Contributors</h3><div id="tr-lb"></div></div>
+</div>
+</section>
+
+<section class="view" id="view-members">
+<h2>Community Members</h2>
+<p class="lead">Everyone who has posted, voted or helped out.</p>
+<div class="searchbox"><input id="memsearch" placeholder="Search members..." oninput="renderMembers()"></div>
+<div id="memgrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px"></div>
+</section>
+
+<section class="view" id="view-me">
+<h2>My Profile</h2>
+<div id="mepanel"></div>
+</section>
+
+<section class="view" id="view-search">
+<h2>Search</h2>
+<p class="lead">Search across players, discussions, feature requests, bug reports and announcements.</p>
+<div class="searchbox"><input id="globalsearch" placeholder="Search the whole community..." oninput="renderSearch()"></div>
+<div class="filters" id="searchfilters"></div>
+<div id="searchresults"></div>
+</section>
+
+<section class="view" id="view-admin">
+<h2>Developer Console</h2>
+<p class="lead">Owner tools. Every action here is logged.</p>
+<div class="tabs" id="admintabs">
+<button data-t="compose" class="on">Announcements</button>
+<button data-t="features">Feature Status</button>
+<button data-t="bugs">Bug Status</button>
+<button data-t="moderation">Moderation</button>
+<button data-t="users">Users</button>
+<button data-t="log">Action Log</button>
+<button data-t="stats">Statistics</button>
+</div>
+<div id="adminbody"></div>
+</section>
+
+<footer>
+Shinobi Community · fan hub for <a href="https://shinobi-legacy.sites.tab.bot/" target="_blank" rel="noopener">Shinobi Legacy</a> and <a href="https://trae5.github.io/shinobi-sprint/" target="_blank" rel="noopener">Shinobi: Life Unbound</a>
+</footer>
+</div>

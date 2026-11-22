@@ -1,0 +1,72 @@
+
+<div class="modal" id="bugmodal"><div class="mbox">
+<h3>Report a Bug</h3>
+<label>Game</label><select id="bg-game"><option value="legacy">Shinobi Legacy</option><option value="unbound">Shinobi: Life Unbound</option></select>
+<label>Title</label><input id="bg-title" maxlength="120" placeholder="Short summary of the bug" oninput="dupeCheck()">
+<div id="bg-dupewarn"></div>
+<label>What happens</label><textarea id="bg-body" maxlength="2000" placeholder="What went wrong, what you expected to happen"></textarea>
+<label>Steps to reproduce (optional)</label><textarea id="bg-steps" maxlength="1000" placeholder="1. Go to... 2. Click..."></textarea>
+<label>Category</label><select id="bg-cat"><option>Gameplay</option><option>UI</option><option>Saves</option><option>Performance</option><option>Crash</option><option>Balance</option><option>Other</option></select>
+<label>Severity</label><select id="bg-sev"><option value="low">Minor</option><option value="med" selected>Moderate</option><option value="high">Game-breaking</option></select>
+<div class="mrow"><button class="btn ghost" onclick="closeModal('bugmodal')">Cancel</button><button class="btn danger" id="bg-post">Post Bug</button></div>
+</div></div>
+
+<div class="modal" id="reqmodal"><div class="mbox">
+<h3>Request a Feature</h3>
+<label>Game</label><select id="rq-game"><option value="legacy">Shinobi Legacy</option><option value="unbound">Shinobi: Life Unbound</option><option value="both">Both games</option></select>
+<label>Title</label><input id="rq-title" maxlength="120" placeholder="Short summary of the idea">
+<label>Details</label><textarea id="rq-body" maxlength="2000" placeholder="Describe the feature and why it would be great"></textarea>
+<label>Category</label><select id="rq-cat"><option>Gameplay</option><option>Content</option><option>UI</option><option>Social</option><option>Quality of life</option><option>Other</option></select>
+<div class="mrow"><button class="btn ghost" onclick="closeModal('reqmodal')">Cancel</button><button class="btn" id="rq-post">Post Request</button></div>
+</div></div>
+
+<div class="modal" id="dismodal"><div class="mbox">
+<h3>Start a Discussion</h3>
+<label>Game</label><select id="ds-game"><option value="legacy">Shinobi Legacy</option><option value="unbound">Shinobi: Life Unbound</option><option value="both">Community</option></select>
+<label>Title</label><input id="ds-title" maxlength="120" placeholder="What do you want to talk about?">
+<label>Your take</label><textarea id="ds-body" maxlength="2000" placeholder="Start the conversation"></textarea>
+<label>Tags (comma separated, optional)</label><input id="ds-tags" maxlength="80" placeholder="pvp, balance, lore">
+<div class="mrow"><button class="btn ghost" onclick="closeModal('dismodal')">Cancel</button><button class="btn" id="ds-post">Post Discussion</button></div>
+</div></div>
+
+<div class="modal" id="annmodal"><div class="mbox">
+<h3>New Announcement</h3>
+<label>Type</label><select id="an-type"><option>Game update</option><option>Patch notes</option><option>Sneak peek</option><option>Upcoming feature</option><option>Maintenance notice</option><option>Event</option><option>Development update</option></select>
+<label>Game tag</label><select id="an-game"><option value="legacy">Shinobi Legacy</option><option value="unbound">Shinobi: Life Unbound</option><option value="both">Both games</option></select>
+<label>Title</label><input id="an-title" maxlength="120" placeholder="Announcement title">
+<label>Body</label><textarea id="an-body" maxlength="4000" placeholder="Write the announcement. Patch notes can use - bullets"></textarea>
+<label>Thumbnail image URL (optional)</label><input id="an-img" placeholder="https://...">
+<div class="mrow"><button class="btn ghost" onclick="closeModal('annmodal')">Cancel</button><button class="btn" id="an-post">Publish</button></div>
+</div></div>
+
+<div class="modal" id="editprofile"><div class="mbox">
+<h3>Edit Profile</h3>
+<label>Display name</label><input id="ep-name" maxlength="24">
+<label>Avatar</label><div id="ep-avatars" style="display:flex;gap:6px;flex-wrap:wrap"></div><div id="ep-upchip" style="display:none;align-items:center;gap:8px;margin-top:6px"></div><button class="btn ghost" id="ep-upload" style="margin-top:6px">Upload your own photo</button><input type="file" id="ep-file" accept="image/*" style="display:none">
+<label>Bio</label><textarea id="ep-bio" maxlength="200" placeholder="A line or two about you"></textarea>
+<div class="mrow"><button class="btn ghost" onclick="closeModal('editprofile')">Cancel</button><button class="btn" id="ep-save">Save</button></div>
+</div></div>
+
+<div class="modal" id="namemodal"><div class="mbox">
+<h3>Pick a display name</h3>
+<p style="color:var(--dim);font-size:13.5px;line-height:1.6">This is what other players see on your posts, in chat, and on your profile.</p>
+<label>Display name</label><input id="nm-in" maxlength="24" placeholder="e.g. ShadowOfTheLeaf">
+<div class="mrow"><button class="btn" id="nm-save">Save</button></div>
+</div></div>
+
+<div class="modal" id="detailmodal"><div class="mbox" id="detailbox"></div></div>
+<div class="modal" id="notifmodal"><div class="mbox">
+<h3>Notifications</h3>
+<div id="notiflist"></div>
+<div class="mrow"><button class="btn ghost" onclick="markAllRead()">Mark all read</button><button class="btn ghost" onclick="clearNotifs()">Clear all</button><button class="btn" onclick="closeModal('notifmodal')">Close</button></div>
+</div></div>
+<div class="modal" id="reportmodal"><div class="mbox">
+<h3>Report Content</h3>
+<label>Reason</label><select id="rp-reason"><option>Spam</option><option>Harassment</option><option>Inappropriate</option><option>Misinformation</option><option>Other</option></select>
+<label>Details (optional)</label><textarea id="rp-detail" maxlength="500" placeholder="Anything the moderators should know"></textarea>
+<div class="mrow"><button class="btn ghost" onclick="closeModal('reportmodal')">Cancel</button><button class="btn danger" id="rp-send">Send Report</button></div>
+</div></div>
+<div class="toast" id="toast"></div>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
