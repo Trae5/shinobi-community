@@ -1,0 +1,80 @@
+// Shinobi Community hub rules — ADD-ON block.
+// Paste these matches INTO your existing rules file (keep your game rules
+// exactly as they are, saves/{uid} and config/{uid} untouched), then publish.
+// OWNER_UID is the game owner account; moderators flag comes from profiles.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner() { return signedIn() && request.auth.uid == 'Gb2MYzFu5sV2Rr8d1cGWMI90K4e2'; }
+    function isMod() {
+      return isOwner() ||
+        (signedIn() && get(/databases/$(database)/documents/community_profiles/$(request.auth.uid)).data.moderator == true);
+    }
+    function small() { return request.resource.size() < 20000; }
+
+    // Public reads for signed-in visitors, open create for members,
+    // author edits own, owner/mods edit anything, deletes owner-only.
+    match /community_bugs/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && small();
+      allow update: if signedIn() && small();
+      allow delete: if isOwner();
+    }
+    match /community_features/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && small();
+      allow update: if signedIn() && small();
+      allow delete: if isOwner();
+    }
+    match /community_discussions/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && small();
+      allow update: if signedIn() && small();
+      allow delete: if isOwner();
+    }
+    match /community_comments/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && small();
+      allow update: if signedIn() && small();
+      allow delete: if isOwner();
+    }
+    match /community_announcements/{id} {
+      allow read: if signedIn();
+      allow create, update, delete: if isOwner();
+    }
+    match /community_activity/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && small();
+      allow update, delete: if isOwner();
+    }
+    // Profiles: everyone reads, you write your own, owner edits anyone.
+    match /community_profiles/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && (request.auth.uid == uid || isOwner());
+      allow delete: if isOwner();
+    }
+    // Notifications: only your own.
+    match /community_notifications/{id} {
+      allow read: if signedIn() && resource.data.to == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.to == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.to == request.auth.uid;
+    }
+    // Reports: anyone files, owner/mods read and manage.
+    match /community_reports/{id} {
+      allow read: if isMod();
+      allow create: if signedIn() && small();
+      allow update, delete: if isMod();
+    }
+    // Mod log: owner writes and reads.
+    match /community_modlog/{id} {
+      allow read, create, update, delete: if isOwner();
+    }
+    match /community_chat/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && small();
+      allow update, delete: if isOwner();
+    }
+  }
+}
